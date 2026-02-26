@@ -132,7 +132,10 @@ fun SumGridChallengeGame() {
             Spacer(modifier = Modifier.weight(1f))
 
             // Footer Buttons
+            val isGridComplete = userInput.all { it.isNotEmpty() } && userInput.toSet().size == 9
+            
             GameActions(
+                isSubmitEnabled = isGridComplete,
                 onSubmit = {
                     val currentRows = (0..2).map { i ->
                         (userInput[i * 3].toIntOrNull() ?: 0) + 
@@ -145,9 +148,7 @@ fun SumGridChallengeGame() {
                         (userInput[i + 6].toIntOrNull() ?: 0)
                     }
                     
-                    val allNumbersUsed = userInput.mapNotNull { it.toIntOrNull() }.toSet().size == 9
-                    
-                    if (currentRows == rowSums.toList() && currentColumns == colSums.toList() && allNumbersUsed) {
+                    if (currentRows == rowSums.toList() && currentColumns == colSums.toList()) {
                         isSuccess = true
                         score += 50
                     } else {
@@ -236,6 +237,20 @@ fun PuzzleGrid(
     colTargets: List<Int>,
     showErrors: Boolean
 ) {
+    var duplicateIndices by remember { mutableStateOf(setOf<Int>()) }
+    var lastDuplicateIdx by remember { mutableIntStateOf(-1) }
+
+    LaunchedEffect(duplicateIndices) {
+        if (duplicateIndices.isNotEmpty()) {
+            delay(2000)
+            if (lastDuplicateIdx != -1) {
+                userInput[lastDuplicateIdx] = ""
+                lastDuplicateIdx = -1
+            }
+            duplicateIndices = emptySet()
+        }
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 3x3 Grid
@@ -249,13 +264,28 @@ fun PuzzleGrid(
                                 onValueChange = { newVal ->
                                     if (newVal.isEmpty()) {
                                         userInput[idx] = ""
+                                        if (lastDuplicateIdx == idx) {
+                                            lastDuplicateIdx = -1
+                                            duplicateIndices = emptySet()
+                                        }
                                     } else if (newVal.length == 1 && newVal[0] in '1'..'9') {
-                                        // Check if already exists elsewhere
-                                        if (!userInput.contains(newVal)) {
+                                        val existingIndex = userInput.indexOf(newVal)
+                                        if (existingIndex != -1 && existingIndex != idx) {
+                                            // Duplicate found: allow temporarily for the highlight
                                             userInput[idx] = newVal
+                                            duplicateIndices = setOf(existingIndex, idx)
+                                            lastDuplicateIdx = idx
+                                        } else {
+                                            // Valid unique number
+                                            userInput[idx] = newVal
+                                            if (lastDuplicateIdx == idx) {
+                                                lastDuplicateIdx = -1
+                                                duplicateIndices = emptySet()
+                                            }
                                         }
                                     }
                                 },
+                                isError = duplicateIndices.contains(idx),
                                 label = "${('A' + c)}${r + 1}"
                             )
                             if (c < 2) Spacer(modifier = Modifier.width(8.dp))
@@ -314,13 +344,20 @@ fun PuzzleGrid(
 }
 
 @Composable
-fun GridCell(value: String, onValueChange: (String) -> Unit, label: String) {
+fun GridCell(value: String, onValueChange: (String) -> Unit, label: String, isError: Boolean = false) {
+    val borderColor = when {
+        isError -> Color.Red
+        value.isNotEmpty() -> Color(0xFF2196F3)
+        else -> Color(0xFFE0E0E0)
+    }
+    val backgroundColor = if (isError) Color(0xFFFFEBEE) else Color.White
+
     Box(
         modifier = Modifier
             .size(65.dp)
             .shadow(4.dp, RoundedCornerShape(10.dp))
-            .background(Color.White, RoundedCornerShape(10.dp))
-            .border(2.dp, if (value.isNotEmpty()) Color(0xFF2196F3) else Color(0xFFE0E0E0), RoundedCornerShape(10.dp)),
+            .background(backgroundColor, RoundedCornerShape(10.dp))
+            .border(2.dp, borderColor, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (value.isEmpty()) {
@@ -334,7 +371,7 @@ fun GridCell(value: String, onValueChange: (String) -> Unit, label: String) {
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
-                color = Color(0xFF37474F)
+                color = if (isError) Color.Red else Color(0xFF37474F)
             ),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             colors = TextFieldDefaults.colors(
@@ -349,7 +386,7 @@ fun GridCell(value: String, onValueChange: (String) -> Unit, label: String) {
 }
 
 @Composable
-fun GameActions(onSubmit: () -> Unit, onReset: () -> Unit, onHint: () -> Unit) {
+fun GameActions(isSubmitEnabled: Boolean, onSubmit: () -> Unit, onReset: () -> Unit, onHint: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "glow")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.6f,
@@ -361,14 +398,23 @@ fun GameActions(onSubmit: () -> Unit, onReset: () -> Unit, onHint: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Button(
             onClick = onSubmit,
+            enabled = isSubmitEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
-                .shadow(10.dp * glowAlpha, RoundedCornerShape(28.dp)),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                .shadow(if (isSubmitEnabled) 10.dp * glowAlpha else 0.dp, RoundedCornerShape(28.dp)),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF00C853),
+                disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
+            ),
             shape = RoundedCornerShape(28.dp)
         ) {
-            Text("SUBMIT", fontSize = 18.sp, fontWeight = FontWeight.Black)
+            Text(
+                "SUBMIT",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Black,
+                color = if (isSubmitEnabled) Color.White else Color.White.copy(alpha = 0.5f)
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
