@@ -33,40 +33,53 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.random.Random
 
+/**
+ * The main activity for the Sum It game. This is the entry point of the application.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Enable edge-to-edge display to draw behind system bars.
         enableEdgeToEdge()
         setContent {
             Sum_itTheme {
+                // Set the main composable for the screen.
                 SumGridChallengeGame()
             }
         }
     }
 }
 
+/**
+ * The main composable that holds the entire game screen.
+ * It manages the overall game state and layout.
+ */
 @Composable
 fun SumGridChallengeGame() {
-    // Game State
+    // Game State Management
     var score by remember { mutableIntStateOf(120) }
     var level by remember { mutableIntStateOf(1) }
-    var timeLeft by remember { mutableIntStateOf(300) }
+    var timeLeft by remember { mutableIntStateOf(300) } // 5 minutes in seconds
     var isGameOver by remember { mutableStateOf(false) }
     var isSuccess by remember { mutableStateOf(false) }
     var showErrors by remember { mutableStateOf(false) }
 
-    // Logic: 1-9 unique numbers
+    // Game Logic State
     val solution = remember { mutableStateListOf<Int>() }
     val userInput = remember { mutableStateListOf(*Array(9) { "" }) }
     val rowSums = remember { mutableStateListOf(0, 0, 0) }
     val colSums = remember { mutableStateListOf(0, 0, 0) }
 
+    /**
+     * Initializes or resets the game to a new state based on the current level.
+     * @param currentLevel The level to start.
+     */
     fun startNewGame(currentLevel: Int) {
         val nums = (1..9).toList().shuffled()
         solution.clear()
         solution.addAll(nums)
         
-        // Calculate Target Sums
+        // Calculate the target sums for rows and columns based on the new solution.
         for (i in 0..2) {
             rowSums[i] = solution[i * 3] + solution[i * 3 + 1] + solution[i * 3 + 2]
             colSums[i] = solution[i] + solution[i + 3] + solution[i + 6]
@@ -74,7 +87,7 @@ fun SumGridChallengeGame() {
         
         userInput.fill("")
         
-        // Pre-fill numbers based on level
+        // Pre-fill a certain number of cells with correct answers based on the level.
         val preFillCount = when(currentLevel) {
             1 -> 4
             2 -> 3
@@ -90,16 +103,19 @@ fun SumGridChallengeGame() {
             }
         }
 
+        // Reset timers and flags.
         timeLeft = 300
         isGameOver = false
         isSuccess = false
         showErrors = false
     }
 
+    // Start the game for the first time.
     LaunchedEffect(Unit) {
         startNewGame(level)
     }
 
+    // Game Timer Logic: Decrements the timer every second.
     LaunchedEffect(isGameOver, isSuccess) {
         while (timeLeft > 0 && !isSuccess && !isGameOver) {
             delay(1000)
@@ -108,24 +124,26 @@ fun SumGridChallengeGame() {
         }
     }
 
-    // Auto-submit logic: check if all numbers are correct
+    // Auto-Submit Logic: Checks if the board is completely correct and automatically triggers success.
     LaunchedEffect(userInput.toList(), solution.toList()) {
         if (solution.isNotEmpty() && !isSuccess && !isGameOver) {
             val allCorrect = userInput.indices.all { i ->
                 userInput[i] == solution[i].toString()
             }
             if (allCorrect) {
-                delay(500) // Small delay for visual feedback of the last green box
+                delay(500) // Brief delay to show the last correct cell.
                 isSuccess = true
                 score += 50
             }
         }
     }
 
+    // Define a cool gradient background for the game.
     val gradientBackground = Brush.verticalGradient(
         colors = listOf(Color(0xFF4A148C), Color(0xFF1A237E))
     )
 
+    // Main layout container.
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -139,7 +157,7 @@ fun SumGridChallengeGame() {
                 .padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Row: Score, Timer, Level
+            // Header: Displays Score, Timer, and Level.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,7 +170,7 @@ fun SumGridChallengeGame() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Main Puzzle Area
+            // The main 3x3 puzzle grid.
             PuzzleGrid(
                 userInput = userInput,
                 solution = solution,
@@ -164,12 +182,13 @@ fun SumGridChallengeGame() {
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Footer Buttons
+            // Footer: Contains action buttons like Submit, Reset, and Hint.
             val isGridComplete = userInput.all { it.isNotEmpty() } && userInput.toSet().size == 9
             
             GameActions(
                 isSubmitEnabled = isGridComplete,
                 onSubmit = {
+                    // Manual submission logic.
                     val currentRows = (0..2).map { i ->
                         (userInput[i * 3].toIntOrNull() ?: 0) + 
                         (userInput[i * 3 + 1].toIntOrNull() ?: 0) + 
@@ -190,6 +209,7 @@ fun SumGridChallengeGame() {
                 },
                 onReset = { startNewGame(level) },
                 onHint = {
+                    // Reveal a random empty cell as a hint.
                     val emptyIndices = userInput.indices.filter { userInput[it].isEmpty() }
                     if (emptyIndices.isNotEmpty()) {
                         val idx = emptyIndices.random()
@@ -199,7 +219,7 @@ fun SumGridChallengeGame() {
             )
         }
 
-        // Overlay for Game Over / Success
+        // Overlay screen for "Game Over" or "Victory".
         if (isGameOver || isSuccess) {
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)),
@@ -216,10 +236,12 @@ fun SumGridChallengeGame() {
                     Button(
                         onClick = { 
                             if (isSuccess) {
+                                // If victorious, advance to the next level.
                                 val nextLevel = level + 1
                                 level = nextLevel
                                 startNewGame(nextLevel)
                             } else {
+                                // Otherwise, restart the current level.
                                 startNewGame(level)
                             }
                         },
@@ -233,6 +255,9 @@ fun SumGridChallengeGame() {
     }
 }
 
+/**
+ * A small card composable to display a game statistic like Score or Level.
+ */
 @Composable
 fun GameStatCard(label: String, value: String) {
     Surface(
@@ -250,15 +275,21 @@ fun GameStatCard(label: String, value: String) {
     }
 }
 
+/**
+ * A circular progress indicator that visualizes the remaining time.
+ */
 @Composable
 fun TimerCircle(seconds: Int, size: Dp = 110.dp) {
+    // Animate the progress of the circle based on the remaining time.
     val progress by animateFloatAsState(targetValue = seconds / 300f, label = "timer")
+    // Format the time as MM:SS.
     val timeStr = String.format(Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
 
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
         CircularProgressIndicator(
-            progress = { (seconds / 300f) },
+            progress = { progress },
             modifier = Modifier.fillMaxSize(),
+            // The color of the progress bar turns red when time is low.
             color = if (seconds < 30) Color.Red else Color(0xFF00E5FF),
             strokeWidth = 6.dp,
             trackColor = Color.White.copy(alpha = 0.1f),
@@ -268,6 +299,9 @@ fun TimerCircle(seconds: Int, size: Dp = 110.dp) {
     }
 }
 
+/**
+ * The main component for the 3x3 grid and the surrounding sum targets.
+ */
 @Composable
 fun PuzzleGrid(
     userInput: MutableList<String>,
@@ -277,9 +311,12 @@ fun PuzzleGrid(
     showErrors: Boolean,
     level: Int
 ) {
+    // State to track indices of duplicate numbers for highlighting.
     var duplicateIndices by remember { mutableStateOf(setOf<Int>()) }
+    // State to remember the last entered duplicate to clear it after a delay.
     var lastDuplicateIdx by remember { mutableIntStateOf(-1) }
 
+    // Effect to clear duplicate highlights and the invalid number after a delay.
     LaunchedEffect(duplicateIndices) {
         if (duplicateIndices.isNotEmpty()) {
             delay(2000)
@@ -293,19 +330,21 @@ fun PuzzleGrid(
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // 3x3 Grid
+            // The 3x3 input grid.
             Column {
                 for (r in 0..2) {
                     Row {
                         for (c in 0..2) {
                             val idx = r * 3 + c
+                            // Check if the current user input for this cell matches the solution.
                             val isCorrectMatch = userInput[idx].isNotEmpty() && userInput[idx] == solution[idx].toString()
                             
+                            // Determine if the green "correct" highlight should be shown based on the level.
                             val canShowHighlight = when {
                                 level <= 5 -> true
-                                level == 6 -> r == 0 || r == 2
-                                level == 7 -> r == 1
-                                else -> false
+                                level == 6 -> r == 0 || r == 2 // Top and bottom rows only
+                                level == 7 -> r == 1          // Middle row only
+                                else -> false                 // No highlights
                             }
                             
                             val isCorrect = isCorrectMatch && canShowHighlight
@@ -322,12 +361,12 @@ fun PuzzleGrid(
                                     } else if (newVal.length == 1 && newVal[0] in '1'..'9') {
                                         val existingIndex = userInput.indexOf(newVal)
                                         if (existingIndex != -1 && existingIndex != idx) {
-                                            // Duplicate found: allow temporarily for the highlight
+                                            // Duplicate found: highlight both cells and mark for removal.
                                             userInput[idx] = newVal
                                             duplicateIndices = setOf(existingIndex, idx)
                                             lastDuplicateIdx = idx
                                         } else {
-                                            // Valid unique number
+                                            // Unique number: update the cell.
                                             userInput[idx] = newVal
                                             if (lastDuplicateIdx == idx) {
                                                 lastDuplicateIdx = -1
@@ -349,7 +388,7 @@ fun PuzzleGrid(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Row Sums
+            // Display the target sums for each row.
             Column {
                 rowTargets.forEachIndexed { i, target ->
                     val currentSum = (0..2).sumOf { userInput[i * 3 + it].toIntOrNull() ?: 0 }
@@ -368,7 +407,7 @@ fun PuzzleGrid(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Column Sums
+        // Display the target sums for each column.
         Row(modifier = Modifier.padding(end = 55.dp)) {
             colTargets.forEachIndexed { i, target ->
                 val currentSum = (0..2).sumOf { userInput[it * 3 + i].toIntOrNull() ?: 0 }
@@ -395,6 +434,10 @@ fun PuzzleGrid(
     }
 }
 
+/**
+ * Represents a single cell in the 3x3 grid.
+ * It handles its own value, styling (error, correct, default), and user input.
+ */
 @Composable
 fun GridCell(
     value: String,
@@ -403,15 +446,16 @@ fun GridCell(
     isError: Boolean = false,
     isCorrect: Boolean = false
 ) {
+    // Determine border and background colors based on the cell's state.
     val borderColor = when {
         isError -> Color.Red
-        isCorrect -> Color(0xFF00C853)
-        value.isNotEmpty() -> Color(0xFF2196F3)
-        else -> Color(0xFFE0E0E0)
+        isCorrect -> Color(0xFF00C853) // Green for correct
+        value.isNotEmpty() -> Color(0xFF2196F3) // Blue for filled
+        else -> Color(0xFFE0E0E0) // Gray for empty
     }
     val backgroundColor = when {
-        isError -> Color(0xFFFFEBEE)
-        isCorrect -> Color(0xFFE8F5E9)
+        isError -> Color(0xFFFFEBEE) // Light red
+        isCorrect -> Color(0xFFE8F5E9) // Light green
         else -> Color.White
     }
 
@@ -423,9 +467,11 @@ fun GridCell(
             .border(2.dp, borderColor, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
+        // Show a label (e.g., "A1") when the cell is empty.
         if (value.isEmpty()) {
             Text(label, color = Color.LightGray, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopStart).padding(4.dp))
         }
+        // The actual text field for user input.
         TextField(
             value = value,
             onValueChange = onValueChange,
@@ -434,6 +480,7 @@ fun GridCell(
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
+                // Determine the text color based on the cell's state.
                 color = when {
                     isError -> Color.Red
                     isCorrect -> Color(0xFF2E7D32)
@@ -452,8 +499,13 @@ fun GridCell(
     }
 }
 
+/**
+ * A container for the main game action buttons.
+ * @param isSubmitEnabled Controls whether the Submit button is active.
+ */
 @Composable
 fun GameActions(isSubmitEnabled: Boolean, onSubmit: () -> Unit, onReset: () -> Unit, onHint: () -> Unit) {
+    // A glowing effect for the submit button when it's enabled.
     val infiniteTransition = rememberInfiniteTransition(label = "glow")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.6f,
@@ -463,6 +515,7 @@ fun GameActions(isSubmitEnabled: Boolean, onSubmit: () -> Unit, onReset: () -> U
     )
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        // The main Submit button.
         Button(
             onClick = onSubmit,
             enabled = isSubmitEnabled,
@@ -486,6 +539,7 @@ fun GameActions(isSubmitEnabled: Boolean, onSubmit: () -> Unit, onReset: () -> U
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Row containing Reset and Hint buttons.
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
                 onClick = onReset,
