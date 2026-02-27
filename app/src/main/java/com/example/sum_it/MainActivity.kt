@@ -61,7 +61,7 @@ fun SumGridChallengeGame() {
     val rowSums = remember { mutableStateListOf(0, 0, 0) }
     val colSums = remember { mutableStateListOf(0, 0, 0) }
 
-    fun startNewGame() {
+    fun startNewGame(currentLevel: Int) {
         val nums = (1..9).toList().shuffled()
         solution.clear()
         solution.addAll(nums)
@@ -73,6 +73,23 @@ fun SumGridChallengeGame() {
         }
         
         userInput.fill("")
+        
+        // Pre-fill numbers based on level
+        val preFillCount = when(currentLevel) {
+            1 -> 4
+            2 -> 3
+            3 -> 2
+            4 -> 1
+            else -> 0
+        }
+        
+        if (preFillCount > 0) {
+            val indices = (0..8).shuffled().take(preFillCount)
+            indices.forEach { idx ->
+                userInput[idx] = solution[idx].toString()
+            }
+        }
+
         timeLeft = 300
         isGameOver = false
         isSuccess = false
@@ -80,7 +97,7 @@ fun SumGridChallengeGame() {
     }
 
     LaunchedEffect(Unit) {
-        startNewGame()
+        startNewGame(level)
     }
 
     LaunchedEffect(isGameOver, isSuccess) {
@@ -88,6 +105,20 @@ fun SumGridChallengeGame() {
             delay(1000)
             timeLeft--
             if (timeLeft == 0) isGameOver = true
+        }
+    }
+
+    // Auto-submit logic: check if all numbers are correct
+    LaunchedEffect(userInput.toList(), solution.toList()) {
+        if (solution.isNotEmpty() && !isSuccess && !isGameOver) {
+            val allCorrect = userInput.indices.all { i ->
+                userInput[i] == solution[i].toString()
+            }
+            if (allCorrect) {
+                delay(500) // Small delay for visual feedback of the last green box
+                isSuccess = true
+                score += 50
+            }
         }
     }
 
@@ -124,9 +155,11 @@ fun SumGridChallengeGame() {
             // Main Puzzle Area
             PuzzleGrid(
                 userInput = userInput,
+                solution = solution,
                 rowTargets = rowSums,
                 colTargets = colSums,
-                showErrors = showErrors
+                showErrors = showErrors,
+                level = level
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -155,7 +188,7 @@ fun SumGridChallengeGame() {
                         showErrors = true
                     }
                 },
-                onReset = { startNewGame() },
+                onReset = { startNewGame(level) },
                 onHint = {
                     val emptyIndices = userInput.indices.filter { userInput[it].isEmpty() }
                     if (emptyIndices.isNotEmpty()) {
@@ -182,8 +215,13 @@ fun SumGridChallengeGame() {
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(
                         onClick = { 
-                            if (isSuccess) level++
-                            startNewGame() 
+                            if (isSuccess) {
+                                val nextLevel = level + 1
+                                level = nextLevel
+                                startNewGame(nextLevel)
+                            } else {
+                                startNewGame(level)
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853))
                     ) {
@@ -219,7 +257,7 @@ fun TimerCircle(seconds: Int, size: Dp = 110.dp) {
 
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(size)) {
         CircularProgressIndicator(
-            progress = { progress },
+            progress = { (seconds / 300f) },
             modifier = Modifier.fillMaxSize(),
             color = if (seconds < 30) Color.Red else Color(0xFF00E5FF),
             strokeWidth = 6.dp,
@@ -233,9 +271,11 @@ fun TimerCircle(seconds: Int, size: Dp = 110.dp) {
 @Composable
 fun PuzzleGrid(
     userInput: MutableList<String>,
+    solution: List<Int>,
     rowTargets: List<Int>,
     colTargets: List<Int>,
-    showErrors: Boolean
+    showErrors: Boolean,
+    level: Int
 ) {
     var duplicateIndices by remember { mutableStateOf(setOf<Int>()) }
     var lastDuplicateIdx by remember { mutableIntStateOf(-1) }
@@ -259,6 +299,17 @@ fun PuzzleGrid(
                     Row {
                         for (c in 0..2) {
                             val idx = r * 3 + c
+                            val isCorrectMatch = userInput[idx].isNotEmpty() && userInput[idx] == solution[idx].toString()
+                            
+                            val canShowHighlight = when {
+                                level <= 5 -> true
+                                level == 6 -> r == 0 || r == 2
+                                level == 7 -> r == 1
+                                else -> false
+                            }
+                            
+                            val isCorrect = isCorrectMatch && canShowHighlight
+
                             GridCell(
                                 value = userInput[idx],
                                 onValueChange = { newVal ->
@@ -286,6 +337,7 @@ fun PuzzleGrid(
                                     }
                                 },
                                 isError = duplicateIndices.contains(idx),
+                                isCorrect = isCorrect,
                                 label = "${('A' + c)}${r + 1}"
                             )
                             if (c < 2) Spacer(modifier = Modifier.width(8.dp))
@@ -344,13 +396,24 @@ fun PuzzleGrid(
 }
 
 @Composable
-fun GridCell(value: String, onValueChange: (String) -> Unit, label: String, isError: Boolean = false) {
+fun GridCell(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    isError: Boolean = false,
+    isCorrect: Boolean = false
+) {
     val borderColor = when {
         isError -> Color.Red
+        isCorrect -> Color(0xFF00C853)
         value.isNotEmpty() -> Color(0xFF2196F3)
         else -> Color(0xFFE0E0E0)
     }
-    val backgroundColor = if (isError) Color(0xFFFFEBEE) else Color.White
+    val backgroundColor = when {
+        isError -> Color(0xFFFFEBEE)
+        isCorrect -> Color(0xFFE8F5E9)
+        else -> Color.White
+    }
 
     Box(
         modifier = Modifier
@@ -371,7 +434,11 @@ fun GridCell(value: String, onValueChange: (String) -> Unit, label: String, isEr
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
-                color = if (isError) Color.Red else Color(0xFF37474F)
+                color = when {
+                    isError -> Color.Red
+                    isCorrect -> Color(0xFF2E7D32)
+                    else -> Color(0xFF37474F)
+                }
             ),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             colors = TextFieldDefaults.colors(
